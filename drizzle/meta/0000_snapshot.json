@@ -1,5 +1,5 @@
 {
-  "id": "04b2f070-80d2-45d6-b3a0-c58fd30067c5",
+  "id": "ebb200a3-dca9-47ae-a2ba-391697dec092",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -43,12 +43,36 @@
           "primaryKey": false,
           "notNull": true
         },
+        "name": {
+          "name": "name",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "banner_cld_pub_id": {
+          "name": "banner_cld_pub_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "banner_url": {
+          "name": "banner_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "capacity": {
           "name": "capacity",
           "type": "integer",
           "primaryKey": false,
           "notNull": true,
           "default": 50
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         },
         "status": {
           "name": "status",

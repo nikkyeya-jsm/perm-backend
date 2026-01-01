@@ -9,7 +9,7 @@ import {
   timestamp,
   varchar,
 } from "drizzle-orm/pg-core";
-import { users } from "./auth";
+import { user } from "./auth";
 
 const timestamps = {
   createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -58,7 +58,7 @@ export const classes = pgTable(
       .references(() => subjects.id, { onDelete: "cascade" }),
     teacherId: text("teacher_id")
       .notNull()
-      .references(() => users.id, { onDelete: "restrict" }),
+      .references(() => user.id, { onDelete: "restrict" }),
 
     inviteCode: varchar("invite_code", { length: 50 }).notNull().unique(),
     name: varchar("name", { length: 255 }).notNull(),
@@ -84,7 +84,7 @@ export const enrollments = pgTable(
 
     studentId: text("student_id")
       .notNull()
-      .references(() => users.id, { onDelete: "cascade" }),
+      .references(() => user.id, { onDelete: "cascade" }),
     classId: integer("class_id")
       .notNull()
       .references(() => classes.id, { onDelete: "cascade" }),
@@ -118,17 +118,17 @@ export const classesRelations = relations(classes, ({ one, many }) => ({
     fields: [classes.subjectId],
     references: [subjects.id],
   }),
-  teacher: one(users, {
+  teacher: one(user, {
     fields: [classes.teacherId],
-    references: [users.id],
+    references: [user.id],
   }),
   enrollments: many(enrollments),
 }));
 
 export const enrollmentsRelations = relations(enrollments, ({ one }) => ({
-  student: one(users, {
+  student: one(user, {
     fields: [enrollments.studentId],
-    references: [users.id],
+    references: [user.id],
   }),
   class: one(classes, {
     fields: [enrollments.classId],

@@ -5,15 +5,8 @@
     {
       "idx": 0,
       "version": "7",
-      "when": 1767238189748,
-      "tag": "0000_foamy_mandarin",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "7",
-      "when": 1767238724355,
-      "tag": "0001_wild_tempest",
+      "when": 1767265382696,
+      "tag": "0000_flat_purifiers",
       "breakpoints": true
     }
   ]
