@@ -3,3 +3,7 @@ type Schedule = {
   startTime: string;
   endTime: string;
 };
+
+type UserRoles = "admin" | "teacher" | "student";
+
+type RateLimitRole = UserRoles | "guest";
