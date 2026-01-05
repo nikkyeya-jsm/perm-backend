@@ -65,125 +65,249 @@ router.get("/:id", async (req, res) => {
   try {
     const userId = req.params.id;
 
-    const [userDetails] = await db
-      .select({
-        ...getTableColumns(user),
-      })
+    const [userRecord] = await db
+      .select()
       .from(user)
       .where(eq(user.id, userId));
 
-    if (!userDetails) {
+    if (!userRecord) {
       return res.status(404).json({ error: "User not found" });
     }
 
-    if (userDetails.role === "teacher") {
-      const classesList = await db
-        .select({
-          ...getTableColumns(classes),
-          subject: {
-            ...getTableColumns(subjects),
-          },
-          department: {
-            ...getTableColumns(departments),
-          },
-        })
-        .from(classes)
-        .leftJoin(subjects, eq(classes.subjectId, subjects.id))
-        .leftJoin(departments, eq(subjects.departmentId, departments.id))
-        .where(eq(classes.teacherId, userId))
-        .orderBy(desc(classes.createdAt));
+    res.status(200).json({ data: userRecord });
+  } catch (error) {
+    console.error("GET /users/:id error:", error);
+    res.status(500).json({ error: "Failed to fetch user" });
+  }
+});
 
-      const subjectMap = new Map<number, typeof subjects.$inferSelect>();
-      const departmentMap = new Map<number, typeof departments.$inferSelect>();
+// List departments associated with a user
+router.get("/:id/departments", async (req, res) => {
+  try {
+    const userId = req.params.id;
+    const { page = 1, limit = 10 } = req.query;
 
-      for (const classItem of classesList) {
-        if (classItem.subject?.id) {
-          subjectMap.set(classItem.subject.id, classItem.subject);
-        }
-        if (classItem.department?.id) {
-          departmentMap.set(classItem.department.id, classItem.department);
-        }
-      }
+    const [userRecord] = await db
+      .select({ id: user.id, role: user.role })
+      .from(user)
+      .where(eq(user.id, userId));
 
-      res.status(200).json({
-        data: {
-          user: userDetails,
-          classes: classesList,
-          subjects: Array.from(subjectMap.values()),
-          departments: Array.from(departmentMap.values()),
-          totals: {
-            classes: classesList.length,
-            subjects: subjectMap.size,
-            departments: departmentMap.size,
-          },
-        },
-      });
-
-      return;
+    if (!userRecord) {
+      return res.status(404).json({ error: "User not found" });
     }
 
-    if (userDetails.role === "student") {
-      const enrollmentsList = await db
-        .select({
-          ...getTableColumns(enrollments),
-          class: {
-            ...getTableColumns(classes),
-          },
-          subject: {
-            ...getTableColumns(subjects),
-          },
-          department: {
-            ...getTableColumns(departments),
-          },
-          teacher: {
-            ...getTableColumns(user),
-          },
-        })
-        .from(enrollments)
-        .leftJoin(classes, eq(enrollments.classId, classes.id))
-        .leftJoin(subjects, eq(classes.subjectId, subjects.id))
-        .leftJoin(departments, eq(subjects.departmentId, departments.id))
-        .leftJoin(user, eq(classes.teacherId, user.id))
-        .where(eq(enrollments.studentId, userId))
-        .orderBy(desc(enrollments.createdAt));
-
-      const classMap = new Map<number, typeof classes.$inferSelect>();
-      const subjectMap = new Map<number, typeof subjects.$inferSelect>();
-
-      for (const enrollment of enrollmentsList) {
-        if (enrollment.class?.id) {
-          classMap.set(enrollment.class.id, enrollment.class);
-        }
-        if (enrollment.subject?.id) {
-          subjectMap.set(enrollment.subject.id, enrollment.subject);
-        }
-      }
-
-      res.status(200).json({
-        data: {
-          user: userDetails,
-          enrollments: enrollmentsList,
-          classes: Array.from(classMap.values()),
-          subjects: Array.from(subjectMap.values()),
-          totals: {
-            enrollments: enrollmentsList.length,
-            classes: classMap.size,
-            subjects: subjectMap.size,
-          },
+    if (userRecord.role !== "teacher" && userRecord.role !== "student") {
+      return res.status(200).json({
+        data: [],
+        pagination: {
+          page: 1,
+          limit: 0,
+          total: 0,
+          totalPages: 0,
         },
       });
-
-      return;
     }
+
+    const currentPage = Math.max(1, +page);
+    const limitPerPage = Math.max(1, +limit);
+    const offset = (currentPage - 1) * limitPerPage;
+
+    const countResult =
+      userRecord.role === "teacher"
+        ? await db
+            .select({ count: sql<number>`count(distinct ${departments.id})` })
+            .from(departments)
+            .leftJoin(subjects, eq(subjects.departmentId, departments.id))
+            .leftJoin(classes, eq(classes.subjectId, subjects.id))
+            .where(eq(classes.teacherId, userId))
+        : await db
+            .select({ count: sql<number>`count(distinct ${departments.id})` })
+            .from(departments)
+            .leftJoin(subjects, eq(subjects.departmentId, departments.id))
+            .leftJoin(classes, eq(classes.subjectId, subjects.id))
+            .leftJoin(enrollments, eq(enrollments.classId, classes.id))
+            .where(eq(enrollments.studentId, userId));
+
+    const totalCount = countResult[0]?.count ?? 0;
+
+    const departmentsList =
+      userRecord.role === "teacher"
+        ? await db
+            .select({
+              ...getTableColumns(departments),
+            })
+            .from(departments)
+            .leftJoin(subjects, eq(subjects.departmentId, departments.id))
+            .leftJoin(classes, eq(classes.subjectId, subjects.id))
+            .where(eq(classes.teacherId, userId))
+            .groupBy(
+              departments.id,
+              departments.code,
+              departments.name,
+              departments.description,
+              departments.createdAt,
+              departments.updatedAt
+            )
+            .orderBy(desc(departments.createdAt))
+            .limit(limitPerPage)
+            .offset(offset)
+        : await db
+            .select({
+              ...getTableColumns(departments),
+            })
+            .from(departments)
+            .leftJoin(subjects, eq(subjects.departmentId, departments.id))
+            .leftJoin(classes, eq(classes.subjectId, subjects.id))
+            .leftJoin(enrollments, eq(enrollments.classId, classes.id))
+            .where(eq(enrollments.studentId, userId))
+            .groupBy(
+              departments.id,
+              departments.code,
+              departments.name,
+              departments.description,
+              departments.createdAt,
+              departments.updatedAt
+            )
+            .orderBy(desc(departments.createdAt))
+            .limit(limitPerPage)
+            .offset(offset);
 
     res.status(200).json({
-      data: {
-        user: userDetails,
+      data: departmentsList,
+      pagination: {
+        page: currentPage,
+        limit: limitPerPage,
+        total: totalCount,
+        totalPages: Math.ceil(totalCount / limitPerPage),
       },
     });
   } catch (error) {
-    console.error("GET /users/:id error:", error);
-    res.status(500).json({ error: "Failed to fetch user details" });
+    console.error("GET /users/:id/departments error:", error);
+    res.status(500).json({ error: "Failed to fetch user departments" });
+  }
+});
+
+// List subjects associated with a user
+router.get("/:id/subjects", async (req, res) => {
+  try {
+    const userId = req.params.id;
+    const { page = 1, limit = 10 } = req.query;
+
+    const [userRecord] = await db
+      .select({ id: user.id, role: user.role })
+      .from(user)
+      .where(eq(user.id, userId));
+
+    if (!userRecord) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    if (userRecord.role !== "teacher" && userRecord.role !== "student") {
+      return res.status(200).json({
+        data: [],
+        pagination: {
+          page: 1,
+          limit: 0,
+          total: 0,
+          totalPages: 0,
+        },
+      });
+    }
+
+    const currentPage = Math.max(1, +page);
+    const limitPerPage = Math.max(1, +limit);
+    const offset = (currentPage - 1) * limitPerPage;
+
+    const countResult =
+      userRecord.role === "teacher"
+        ? await db
+            .select({ count: sql<number>`count(distinct ${subjects.id})` })
+            .from(subjects)
+            .leftJoin(classes, eq(classes.subjectId, subjects.id))
+            .where(eq(classes.teacherId, userId))
+        : await db
+            .select({ count: sql<number>`count(distinct ${subjects.id})` })
+            .from(subjects)
+            .leftJoin(classes, eq(classes.subjectId, subjects.id))
+            .leftJoin(enrollments, eq(enrollments.classId, classes.id))
+            .where(eq(enrollments.studentId, userId));
+
+    const totalCount = countResult[0]?.count ?? 0;
+
+    const subjectsList =
+      userRecord.role === "teacher"
+        ? await db
+            .select({
+              ...getTableColumns(subjects),
+              department: {
+                ...getTableColumns(departments),
+              },
+            })
+            .from(subjects)
+            .leftJoin(departments, eq(subjects.departmentId, departments.id))
+            .leftJoin(classes, eq(classes.subjectId, subjects.id))
+            .where(eq(classes.teacherId, userId))
+            .groupBy(
+              subjects.id,
+              subjects.departmentId,
+              subjects.name,
+              subjects.code,
+              subjects.description,
+              subjects.createdAt,
+              subjects.updatedAt,
+              departments.id,
+              departments.code,
+              departments.name,
+              departments.description,
+              departments.createdAt,
+              departments.updatedAt
+            )
+            .orderBy(desc(subjects.createdAt))
+            .limit(limitPerPage)
+            .offset(offset)
+        : await db
+            .select({
+              ...getTableColumns(subjects),
+              department: {
+                ...getTableColumns(departments),
+              },
+            })
+            .from(subjects)
+            .leftJoin(departments, eq(subjects.departmentId, departments.id))
+            .leftJoin(classes, eq(classes.subjectId, subjects.id))
+            .leftJoin(enrollments, eq(enrollments.classId, classes.id))
+            .where(eq(enrollments.studentId, userId))
+            .groupBy(
+              subjects.id,
+              subjects.departmentId,
+              subjects.name,
+              subjects.code,
+              subjects.description,
+              subjects.createdAt,
+              subjects.updatedAt,
+              departments.id,
+              departments.code,
+              departments.name,
+              departments.description,
+              departments.createdAt,
+              departments.updatedAt
+            )
+            .orderBy(desc(subjects.createdAt))
+            .limit(limitPerPage)
+            .offset(offset);
+
+    res.status(200).json({
+      data: subjectsList,
+      pagination: {
+        page: currentPage,
+        limit: limitPerPage,
+        total: totalCount,
+        totalPages: Math.ceil(totalCount / limitPerPage),
+      },
+    });
+  } catch (error) {
+    console.error("GET /users/:id/subjects error:", error);
+    res.status(500).json({ error: "Failed to fetch user subjects" });
   }
 });
 
