@@ -2,7 +2,7 @@ import express from "express";
 import { and, desc, eq, getTableColumns, ilike, or, sql } from "drizzle-orm";
 
 import { db } from "../db";
-import { departments, subjects } from "../db/schema";
+import { classes, departments, enrollments, subjects, user } from "../db/schema";
 
 const router = express.Router();
 
@@ -79,6 +79,90 @@ router.post("/", async (req, res) => {
   } catch (error) {
     console.error("POST /departments error:", error);
     res.status(500).json({ error: "Failed to create department" });
+  }
+});
+
+// Get department details with subjects, classes, and enrolled students
+router.get("/:id", async (req, res) => {
+  try {
+    const departmentId = Number(req.params.id);
+
+    if (!Number.isFinite(departmentId)) {
+      return res.status(400).json({ error: "Invalid department id" });
+    }
+
+    const [department] = await db
+      .select({
+        ...getTableColumns(departments),
+      })
+      .from(departments)
+      .where(eq(departments.id, departmentId));
+
+    if (!department) {
+      return res.status(404).json({ error: "Department not found" });
+    }
+
+    const [subjectsList, classesList, enrolledStudents] = await Promise.all([
+      db
+        .select({
+          ...getTableColumns(subjects),
+          totalClasses: sql<number>`count(${classes.id})`,
+        })
+        .from(subjects)
+        .leftJoin(classes, eq(subjects.id, classes.subjectId))
+        .where(eq(subjects.departmentId, departmentId))
+        .groupBy(subjects.id)
+        .orderBy(desc(subjects.createdAt)),
+      db
+        .select({
+          ...getTableColumns(classes),
+          subject: {
+            ...getTableColumns(subjects),
+          },
+          teacher: {
+            ...getTableColumns(user),
+          },
+        })
+        .from(classes)
+        .leftJoin(subjects, eq(classes.subjectId, subjects.id))
+        .leftJoin(user, eq(classes.teacherId, user.id))
+        .where(eq(subjects.departmentId, departmentId))
+        .orderBy(desc(classes.createdAt)),
+      db
+        .select({
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          image: user.image,
+          role: user.role,
+        })
+        .from(user)
+        .leftJoin(enrollments, eq(user.id, enrollments.studentId))
+        .leftJoin(classes, eq(enrollments.classId, classes.id))
+        .leftJoin(subjects, eq(classes.subjectId, subjects.id))
+        .where(
+          and(eq(user.role, "student"), eq(subjects.departmentId, departmentId))
+        )
+        .groupBy(user.id, user.name, user.email, user.image, user.role)
+        .orderBy(desc(user.createdAt)),
+    ]);
+
+    res.status(200).json({
+      data: {
+        department,
+        subjects: subjectsList,
+        classes: classesList,
+        enrolledStudents,
+        totals: {
+          subjects: subjectsList.length,
+          classes: classesList.length,
+          enrolledStudents: enrolledStudents.length,
+        },
+      },
+    });
+  } catch (error) {
+    console.error("GET /departments/:id error:", error);
+    res.status(500).json({ error: "Failed to fetch department details" });
   }
 });
 

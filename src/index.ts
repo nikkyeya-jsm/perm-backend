@@ -7,6 +7,7 @@ import usersRouter from "./routes/users";
 import classesRouter from "./routes/classes";
 import departmentsRouter from "./routes/departments";
 import statsRouter from "./routes/stats";
+import enrollmentsRouter from "./routes/enrollments";
 
 // import securityMiddleware from "./middleware/security";
 import { auth } from "./lib/auth";
@@ -33,6 +34,7 @@ app.use("/api/users", usersRouter);
 app.use("/api/classes", classesRouter);
 app.use("/api/departments", departmentsRouter);
 app.use("/api/stats", statsRouter);
+app.use("/api/enrollments", enrollmentsRouter);
 
 app.get("/", (req, res) => {
   res.send("Backend server is running!");
